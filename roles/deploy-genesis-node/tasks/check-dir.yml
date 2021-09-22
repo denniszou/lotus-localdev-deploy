@@ -1,0 +1,11 @@
+---
+- name: Check directory
+  stat:
+      path: "{{ path }}"
+  register: dir_stat
+
+- block:
+    - debug:
+        msg: "Lotus {{ path }} directory found. Please run clear playbook first: ansible-playbook clear.yml -e really_do_it=yes"
+    - meta: end_play
+  when: dir_stat.stat.exists

@@ -1,0 +1,18 @@
+all:
+    hosts:
+        lotus-localdev:
+            ansible_connection: local
+    vars:
+        # proxy_url: http://<proxy-host>:<proxy-port>
+        build_env:
+            RUSTFLAGS: "-C target-cpu=native -g"
+            FFI_BUILD_FROM_SOURCE: 1
+            GOPROXY: https://goproxy.cn
+        # sector_512MiB_support: true
+        genesis_node_env:
+            IPFS_GATEWAY: https://proof-parameters.s3.cn-south-1.jdcloud-oss.com/ipfs/
+            RUST_LOG: Debug
+            FIL_PROOFS_MAXIMIZE_CACHING: 1
+            FIL_PROOFS_USE_MULTICORE_SDR: 1
+            FIL_PROOFS_MULTICORE_SDR_PRODUCERS: 2
+

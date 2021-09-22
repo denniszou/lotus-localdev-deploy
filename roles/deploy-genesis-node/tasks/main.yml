@@ -1,0 +1,201 @@
+---
+- name: check lotus process
+  shell:
+    cmd: ps aux | grep 'lotus/lotus' | grep -v grep | wc -l
+  register: lotus_procs
+
+- block:
+    - debug:
+        msg: "Lotus processes found. Please run clear playbook first: ansible-playbook clear.yml -e really_do_it=yes"
+    - meta: end_play
+  when: lotus_procs.stdout != "0"
+
+- name: check tmux session
+  shell:
+    cmd: tmux ls | grep lotus-genesis | grep -v grep | wc -l
+  register: tmux_session
+
+- block:
+    - debug:
+        msg: "Lotus tmux session found. Please run clear playbook first: ansible-playbook clear.yml -e really_do_it=yes"
+    - meta: end_play
+  when: tmux_session.stdout != "0"
+
+- name: check lotus directory
+  include_tasks: check-dir.yml
+  loop_control:
+      loop_var: path
+  with_items:
+    - ~/.genesis-sectors
+    - ~/.lotus-genesis
+    - ~/.lotus-miner-genesis
+    - ~/.lotus
+    - ~/.lotus-miner
+    - ~/lotus-genesis-logs
+
+- name: fetch proof parameters
+  shell:
+    cmd: ~/lotus/lotus fetch-params 2KiB
+  environment: "{{ genesis_node_env }}"
+
+- name: pre-seal 2KiB sectors
+  shell:
+    cmd: ~/lotus/lotus-seed pre-seal --sector-size=2KiB --num-sectors=2
+  environment: "{{ genesis_node_env }}"
+
+- name: generate genesis template
+  shell:
+    cmd: |
+        ~/lotus/lotus-seed genesis new ~/localdev.json
+        ~/lotus/lotus-seed genesis add-miner ~/localdev.json ~/.genesis-sectors/pre-seal-t01000.json
+  environment: "{{ genesis_node_env }}"
+
+- name: create lotus-genesis-logs director
+  ansible.builtin.file:
+    path: ~/lotus-genesis-logs
+    state: directory
+
+- name: init genesis daemon
+  shell:
+    cmd: LOTUS_PATH=~/.lotus-genesis tmux new-session -s lotus-genesis -n genesis-daemon -d '~/lotus/lotus daemon --lotus-make-genesis ~/localdev.car --genesis-template ~/localdev.json --bootstrap=false 2>&1 | tee ~/lotus-genesis-logs/lotus-daemon-genesis-init.log'
+  environment: "{{ genesis_node_env }}"
+
+- name: wait for genesis daemon init
+  ansible.builtin.wait_for:
+    path: ~/lotus-genesis-logs/lotus-daemon-genesis-init.log
+    search_regex: "module ready"
+    timeout: 300
+
+- name: stop genesis daemon init
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis ~/lotus/lotus daemon stop
+  environment: "{{ genesis_node_env }}"
+
+- name: start genesis daemon
+  shell:
+    cmd: LOTUS_PATH=~/.lotus-genesis tmux new-session -s lotus-genesis -n genesis-daemon -d '~/lotus/lotus daemon --genesis ~/localdev.car --profile=bootstrapper 2>&1 | tee ~/lotus-genesis-logs/lotus-daemon-genesis.log'
+  environment: "{{ genesis_node_env }}"
+
+- name: wait for genesis daemon init
+  ansible.builtin.wait_for:
+    path: ~/lotus-genesis-logs/lotus-daemon-genesis.log
+    search_regex: "module ready"
+    timeout: 300
+
+- name: import genesis node wallet
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis ~/lotus/lotus wallet import --as-default ~/.genesis-sectors/pre-seal-t01000.key
+  environment: "{{ genesis_node_env }}"
+
+- name: init genesis miner
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis LOTUS_MINER_PATH=~/.lotus-miner-genesis ~/lotus/lotus-miner init --genesis-miner --actor=t01000 --sector-size=2KiB --pre-sealed-sectors=~/.genesis-sectors --pre-sealed-metadata=~/.genesis-sectors/pre-seal-t01000.json --nosync 2>&1 | tee ~/lotus-genesis-logs/lotus-miner-genesis-init.log
+  environment: "{{ genesis_node_env }}"
+
+- name: start genesis miner
+  shell:
+    cmd: tmux new-window  -a -t lotus-genesis:genesis-daemon -n genesis-miner -d -e LOTUS_PATH=~/.lotus-genesis -e LOTUS_MINER_PATH=~/.lotus-miner-genesis '~/lotus/lotus-miner run --nosync 2>&1 | tee ~/lotus-genesis-logs/lotus-miner-genesis.log'
+
+- name: create lotus director
+  ansible.builtin.file:
+    path: ~/.lotus
+    state: directory
+
+- name: generate regular daemon config
+  shell:
+    cmd: |
+        ~/lotus/lotus config default | sed -e 's/^  #\(ListenAddress.*\)1234\(.*$\)/  \11235\2/g' > ~/.lotus/config.toml
+
+- name: start regular daemon
+  shell:
+    cmd: tmux new-window  -a -t lotus-genesis:genesis-miner -n regular-daemon -d -e LOTUS_PATH=~/.lotus '~/lotus/lotus daemon --genesis ~/localdev.car --bootstrap=false 2>&1 | tee ~/lotus-genesis-logs/lotus-daemon-regular.log'
+
+- name: wait for regular daemon ready
+  ansible.builtin.wait_for:
+    path: ~/lotus-genesis-logs/lotus-daemon-regular.log
+    search_regex: "module ready"
+    timeout: 300
+
+- name: get genesis daemon connect info
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis ~/lotus/lotus net listen | head -1
+  environment: "{{ genesis_node_env }}"
+  register: connect_info
+
+- debug:
+    msg: "Genesis daemon connect info: {{ connect_info.stdout }}"
+
+- name: connect to genesis daemon 
+  shell:
+    cmd: |
+         ~/lotus/lotus --repo ~/.lotus net connect {{ connect_info.stdout }}
+  environment: "{{ genesis_node_env }}"
+
+- name: wait regular daemon sync
+  shell:
+    cmd: |
+         ~/lotus/lotus --repo ~/.lotus sync wait
+  environment: "{{ genesis_node_env }}"
+
+- name: create regular miner wallet
+  shell:
+    cmd: |
+        ~/lotus/lotus --repo ~/.lotus wallet new bls
+  environment: "{{ genesis_node_env }}"
+  register: regular_wallet
+  
+- debug:
+    msg: "Regular miner wallet: {{ regular_wallet.stdout }}"
+
+- name: send FIL to regular wallet
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis ~/lotus/lotus send {{ regular_wallet.stdout }} 1000000
+  environment: "{{ genesis_node_env }}"
+  register: msg_id
+
+- debug:
+    msg: "Transaction message id: {{ msg_id.stdout }}"
+
+- name: wait transaction confirm
+  shell:
+    cmd: |
+        LOTUS_PATH=~/.lotus-genesis ~/lotus/lotus state wait-msg {{ msg_id.stdout }}
+  environment: "{{ genesis_node_env }}"
+
+- name: init genesis miner
+  shell:
+    cmd: ~/lotus/lotus-miner --repo ~/.lotus --miner-repo ~/.lotus-miner init --sector-size=2KiB  2>&1 | tee ~/lotus-genesis-logs/lotus-miner-regular-init.log
+  environment: "{{ genesis_node_env }}"
+
+- name: modify regular miner port
+  shell:
+    cmd: |
+        sed -e 's/^  #\(ListenAddress.*\)2345\(.*$\)/  \12346\2/g' -i ~/.lotus-miner/config.toml
+        sed -e 's/^  #\(BatchPreCommits = \)true$/  \1false/g' -i ~/.lotus-miner/config.toml
+        sed -e 's/^  #\(AggregateCommits = \)true$/  \1false/g' -i ~/.lotus-miner/config.toml
+    warn: false
+
+- name: start regular miner
+  shell:
+    cmd: tmux new-window  -a -t lotus-genesis:regular-daemon -n regular-miner -d -e LOTUS_PATH=~/.lotus -e LOTUS_MINER_PATH=~/.lotus-miner '~/lotus/lotus-miner run 2>&1 | tee ~/lotus-genesis-logs/lotus-miner-regular.log'
+
+- name: start genesis node console
+  shell:
+    cmd: |
+        tmux new-window  -a -t lotus-genesis:regular-miner -n genesis-console -d -e LOTUS_PATH=~/.lotus-genesis -e LOTUS_MINER_PATH=~/.lotus-miner-genesis -c ~
+
+- name: start regular node console
+  shell:
+    cmd: |
+        tmux new-window  -a -t lotus-genesis:genesis-console -n regular-console -d -e LOTUS_PATH=~/.lotus -e LOTUS_MINER_PATH=~/.lotus-miner -c ~
+
+- name: set PS1
+  shell:
+    cmd: |
+        tmux send-keys -t lotus-genesis:genesis-console 'export PS1="(Genesis) $PS1"' Enter "clear" Enter
+        tmux send-keys -t lotus-genesis:regular-console 'export PS1="(Regular) $PS1"' Enter "clear" Enter

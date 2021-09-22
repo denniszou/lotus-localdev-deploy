@@ -1,0 +1,63 @@
+---
+- name: stop regular lotus-miner
+  shell:
+    cmd: |
+         ~/lotus/lotus-miner --repo ~/.lotus --miner-repo ~/.lotus-miner stop
+  environment: "{{ genesis_node_env }}"
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+
+- name: stop regular lotus-daemon
+  shell:
+    cmd: |
+         ~/lotus/lotus --repo ~/.lotus daemon stop
+  environment: "{{ genesis_node_env }}"
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+
+- name: stop genesis lotus-miner
+  shell:
+    cmd: |
+         ~/lotus/lotus-miner --repo ~/.lotus-genesis --miner-repo ~/.lotus-miner-genesis stop
+  environment: "{{ genesis_node_env }}"
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+
+- name: stop genesis lotus-daemon
+  shell:
+    cmd: |
+         ~/lotus/lotus --repo ~/.lotus-genesis daemon stop
+  environment: "{{ genesis_node_env }}"
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+
+- name: kill all lotus process
+  shell:
+    cmd: ps aux | grep '\/lotus\/lotus' | awk '{print $2}' | xargs kill 
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+    
+- name: kill genesis tmux session
+  shell:
+    cmd: tmux kill-session -t lotus-genesis
+  ignore_errors: true
+  register: cmd_result
+
+- debug:
+    var: cmd_result.stdout_lines
+    

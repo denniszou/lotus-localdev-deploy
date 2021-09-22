@@ -1,0 +1,100 @@
+---
+- set_fact:
+        #testfact: "{{ genesis_node_env.items() }}"
+    build_env: "{{ build_env | combine({'https_proxy': proxy_url }) | combine({'http_proxy': proxy_url }) }}"
+  when: proxy_url is defined and proxy_url != ""
+
+- name: install base package
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  become: true
+  become_user: root
+  with_items:
+    - mesa-opencl-icd
+    - ocl-icd-opencl-dev
+    - gcc
+    - git
+    - bzr
+    - jq
+    - pkg-config
+    - curl
+    - clang
+    - build-essential
+    - hwloc
+    - libhwloc-dev
+    - wget
+    - htop
+    - sysstat
+    - chrony
+    - tmux
+    - tree
+
+- stat:
+    path: ~/.cargo
+  register: rust_stat
+- block:
+    - name: download rustup installer
+      ansible.builtin.get_url:
+        url: https://sh.rustup.rs
+        dest: /tmp/rustup-installer
+        mode: '0755'
+      environment: "{{ build_env }}"
+    
+    - name: install rustup
+      shell:
+        cmd: /tmp/rustup-installer -y
+      environment: "{{ build_env }}"
+  when: not rust_stat.stat.exists
+
+- stat:
+    path: /usr/local/go
+  register: go_stat
+- block:
+    - name: download go installer
+      ansible.builtin.get_url:
+        url: https://golang.org/dl/go1.16.7.linux-amd64.tar.gz
+        dest: /tmp/go1.16.7.linux-amd64.tar.gz
+      environment: "{{ build_env }}"
+    
+    - name: unpack go archive
+      ansible.builtin.unarchive:
+        remote_src: yes
+        src: /tmp/go1.16.7.linux-amd64.tar.gz
+        dest: /usr/local/
+      become: true
+      become_user: root
+  when: not go_stat.stat.exists
+
+- name: add go bin path to .bashrc
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    line: "export PATH=/usr/local/go/bin:~/lotus/:$PATH"
+    state: present
+    insertafter: EOF
+
+- stat:
+    path: ~/lotus
+  register: lotus_src_stat
+- name: clone lotus repository
+  ansible.builtin.git:
+    repo: https://github.com/filecoin-project/lotus.git
+    dest: ~/lotus
+    force: yes
+  environment: "{{ build_env }}"
+  when: not lotus_src_stat.stat.exists
+
+- name: add 512MiB sector support
+  ansible.builtin.replace:
+    path: ~/lotus/build/params_2k.go
+    regexp: '^(.*)policy\.SetSupportedProofTypes\(abi\.RegisteredSealProof_StackedDrg2KiBV1, abi\.RegisteredSealProof_StackedDrg8MiBV1\)$'
+    replace: '\1policy.SetSupportedProofTypes(abi.RegisteredSealProof_StackedDrg2KiBV1, abi.RegisteredSealProof_StackedDrg8MiBV1, abi.RegisteredSealProof_StackedDrg512MiBV1)'
+  when: sector_512MiB_support is defined and sector_512MiB_support
+
+- name: build lotus
+  shell:
+    cmd: |
+        cd ~/lotus
+        make debug
+        GOFLAGS=-tags=debug make lotus-seed
+  environment: "{{ build_env }}"

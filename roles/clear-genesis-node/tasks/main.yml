@@ -1,0 +1,32 @@
+---
+- block:
+    - debug:
+        msg: |
+          You have specify "-e really_do_it=yes" on command line to confirm clear operation.
+    - meta: end_play
+  when: really_do_it is undefined or (really_do_it != "yes" and really_do_it !="true")
+
+- block:
+    - name: kill all lotus provess
+      shell:
+        cmd: ps aux | grep '\/lotus\/lotus' | awk '{print $2}' | xargs kill 
+      ignore_errors: true
+    
+    - name: kill genesis tmux session
+      shell:
+        cmd: tmux kill-session -t lotus-genesis
+      ignore_errors: true
+    
+    - name: clear directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      ignore_errors: true
+      with_items:
+        - ~/.genesis-sectors
+        - ~/.lotus-genesis
+        - ~/.lotus-miner-genesis
+        - ~/.lotus
+        - ~/.lotus-miner
+        - ~/lotus-genesis-logs
+  when: really_do_it is defined and (really_do_it == "yes" or really_do_it == "true")
