@@ -32,17 +32,17 @@
 ## 部署:
 使用下面的命令完成部署
 
-    ```
-    git clone https://github.com/denniszou/lotus-localdev-deploy.git
-    cd lotus-localdev-deploy
-    ansible-playbook deploy.yml
-    ```
+```
+git clone https://github.com/denniszou/lotus-localdev-deploy.git
+cd lotus-localdev-deploy
+ansible-playbook deploy.yml
+```
 如果准备了http代理，请使用下面的命令替代上面的命令：
-    ```
-    https_proxy=http://<proxy_ip>:<proxy_port> git clone https://github.com/denniszou/lotus-localdev-deploy.git
-    cd lotus-localdev-deploy
-    ansible-playbook deploy.yml -e proxy_url=http://<proxy_ip>:<proxy_port>
-    ```
+```
+https_proxy=http://<proxy_ip>:<proxy_port> git clone https://github.com/denniszou/lotus-localdev-deploy.git
+cd lotus-localdev-deploy
+ansible-playbook deploy.yml -e proxy_url=http://<proxy_ip>:<proxy_port>
+```
 
 ## 使用说明：
 1. 运行 ```tmux a``` 进入tmux 管理界面，使用下面的快捷键切换终端：
