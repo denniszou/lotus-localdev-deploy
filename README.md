@@ -24,7 +24,7 @@
     修改后退出当前用户并重新登录
 4. 安装 ansible 软件包
     ```
-    sudo apt install ansible
+    sudo apt install -y ansible git
     ```
 5. (可选)一个能够正常访问github/rust/go软件包的http代理，如果在编译过程中出现无法访问各种软件包的问题，请准备一个能够正常访问各种软件包的http代理，中国大陆用户，强烈建议使用http代理部署。
 
@@ -36,8 +36,12 @@
     git clone https://github.com/denniszou/lotus-localdev-deploy.git
     cd lotus-localdev-deploy
     ansible-playbook deploy.yml
-    # 使用代理的话请使用下面的命令部署
-    # ansible-playbook deploy.yml -e proxy_url=http://<proxy_ip>:<proxy_port>
+    ```
+如果准备了http代理，请使用下面的命令替代上面的命令：
+    ```
+    https_proxy=http://<proxy_ip>:<proxy_port> git clone https://github.com/denniszou/lotus-localdev-deploy.git
+    cd lotus-localdev-deploy
+    ansible-playbook deploy.yml -e proxy_url=http://<proxy_ip>:<proxy_port>
     ```
 
 ## 使用说明：

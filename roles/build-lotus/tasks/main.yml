@@ -94,6 +94,8 @@
 - name: build lotus
   shell:
     cmd: |
+        . "$HOME/.cargo/env"
+        export PATH=/usr/local/go/bin:$PATH
         cd ~/lotus
         make debug
         GOFLAGS=-tags=debug make lotus-seed
