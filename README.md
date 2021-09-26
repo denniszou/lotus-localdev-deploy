@@ -1,3 +1,5 @@
+[![asciicast](https://asciinema.org/a/438107.svg)](https://asciinema.org/a/438107)
+
 # Lotus 本地测试网一键部署 Ansible 剧本
 ## 概述
 用Ansible实现一条命令自动部署 Lotus 本地测试网，部署的节点包含一下模块：
